@@ -153,7 +153,7 @@ async function processInventoryDepletion(order: Order): Promise<string[]> {
     const menuItemMap = new Map(menuItems.map((m: any) => [m.id, m]));
 
     await Promise.all(order.items.map(async (item) => {
-        const menuItem = menuItemMap.get(item.id) as any;
+        const menuItem: any = menuItemMap.get(item.id);
         const qty = item.quantity;
 
         let depleted = false;
