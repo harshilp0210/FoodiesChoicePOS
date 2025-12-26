@@ -17,8 +17,8 @@ export default function InventoryPage() {
         loadData();
     }, []);
 
-    const loadData = () => {
-        const data = getInventory();
+    const loadData = async () => {
+        const data = await getInventory();
         setItems(data);
         setIsLoading(false);
     };
@@ -34,14 +34,14 @@ export default function InventoryPage() {
         setIsFormOpen(true);
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (confirm('Are you sure you want to delete this item?')) {
-            const updated = deleteInventoryItem(id);
-            setItems(updated);
+            await deleteInventoryItem(id);
+            loadData();
         }
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const newItem: InventoryItem = {
             id: editingItem ? editingItem.id : uuidv4(),
@@ -52,8 +52,8 @@ export default function InventoryPage() {
             costPerUnit: Number(formData.costPerUnit) || 0,
             category: formData.category || 'General',
         };
-        const updated = updateInventoryItem(newItem);
-        setItems(updated);
+        await updateInventoryItem(newItem);
+        loadData();
         setIsFormOpen(false);
     };
 

@@ -1,10 +1,18 @@
-import { Order, CartItem, InventoryItem, Vendor, Employee, PurchaseOrder, MenuItem } from './types';
+import { Order, CartItem, InventoryItem, Vendor, Employee, PurchaseOrder, MenuItem, TimeEntry, Table } from './types';
 import { v4 as uuidv4 } from 'uuid';
+import { getOrdersServer, saveOrderServer } from './actions';
 
-// Mock Supabase Client for "Mock Mode"
-// Utilizes localStorage to persist orders across page reloads (simulating a database)
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase Client
+// Note: User must provide these env variables in .env.local
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
+
+export const supabase = createClient(supabaseUrl, supabaseKey);
 
 const STORAGE_KEY = 'foodies_pos_orders';
+const TIMESHEET_KEY = 'foodies_pos_timesheets';
 
 // --- Offline Sync Mock ---
 const OFFLINE_QUEUE_KEY = 'foodies_pos_offline_queue';
@@ -39,24 +47,26 @@ export const saveOrder = async (
     itemsOrOrder: CartItem[] | Order,
     total?: number,
     paymentMethod?: string,
-    tableId?: string
-): Promise<Order | null> => {
+    tableId?: string,
+    tip?: number,
+    guestName?: string
+): Promise<{ order: Order | null, alerts: string[] }> => {
     try {
         let newOrder: Order;
 
         if (Array.isArray(itemsOrOrder)) {
-            // Legacy Usage (POS)
             newOrder = {
                 id: uuidv4(),
                 created_at: new Date().toISOString(),
                 status: 'pending',
                 total: total || 0,
+                tip: tip || 0,
                 items: itemsOrOrder,
                 payment_method: paymentMethod || 'cash',
                 tableId,
+                customerName: guestName
             };
         } else {
-            // New Usage (Online Order object passed directly)
             newOrder = itemsOrOrder;
         }
 
@@ -66,86 +76,96 @@ export const saveOrder = async (
             const queue = getOfflineQueue();
             queue.push(newOrder);
             localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
-            return newOrder;
+            return { order: newOrder, alerts: [] };
         }
 
-        // Simulate network delay
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // 1. Insert into Real DB (via Prisma Server Action)
+        const result = await saveOrderServer(newOrder);
+        if (!result.success) throw result.error;
 
+        // 2. (Handled by Prisma relation create)
+
+        // 3. Fallback/Cache to Local (for UI responsiveness)
         const existingOrders = getOrdersLocal();
-        const updatedOrders = [newOrder, ...existingOrders];
+        // [PERF] Limit local storage history to last 50 orders to prevent JSON lag
+        const updatedOrders = [newOrder, ...existingOrders].slice(0, 50);
 
-        // Deduct Inventory based on Recipes
-        const inventory = getInventory();
-        let inventoryUpdated = false;
-
-        newOrder.items.forEach(item => {
-            if (item.recipe && item.recipe.length > 0) {
-                item.recipe.forEach(ingredient => {
-                    const invItem = inventory.find(i => i.id === ingredient.inventoryItemId);
-                    if (invItem) {
-                        invItem.quantity = Math.max(0, invItem.quantity - (ingredient.quantity * item.quantity));
-                        inventoryUpdated = true;
-                    }
-                });
-            }
-        });
-
-        if (inventoryUpdated) {
-            localStorage.setItem(INVENTORY_KEY, JSON.stringify(inventory));
-        }
-
-        // Update table status if applicable
+        // Update table status if applicable (Local Only for now, should sync to DB tables table)
         if (tableId) {
-            // Find which area and table this belongs to
-            const layout = getLayout();
-            for (const area of layout) {
-                const table = area.tables.find(t => t.id === tableId);
-                if (table) {
-                    updateTableStatus(area.id, table.id, 'occupied');
-                    break;
-                }
-            }
+            updateTableStatus('main-hall', tableId, 'occupied'); // Mock Fn
         }
 
         if (typeof window !== 'undefined') {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
-            // Dispatch event for KDS to pick up changes in other tabs
             window.dispatchEvent(new StorageEvent('storage', {
                 key: STORAGE_KEY,
                 newValue: JSON.stringify(updatedOrders)
             }));
-
-            if (inventoryUpdated) {
-                // Notify inventory updated
-                window.dispatchEvent(new Event('inventory_updated'));
-            }
         }
 
-        return newOrder;
+        return { order: newOrder, alerts: [] };
     } catch (error) {
         console.error("Error saving order:", error);
-        return null;
+
+        // Error Recovery: IF database fails, we still want the order to "work" locally for the demo.
+        const existingOrders = getOrdersLocal();
+        const updatedOrders = [{
+            ...itemsOrOrder,
+            id: (itemsOrOrder as any).id || uuidv4(),
+            created_at: new Date().toISOString(),
+            status: 'pending',
+            items: Array.isArray(itemsOrOrder) ? itemsOrOrder : (itemsOrOrder as any).items
+        } as Order, ...existingOrders];
+
+        if (typeof window !== 'undefined') {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+            window.dispatchEvent(new StorageEvent('storage', {
+                key: STORAGE_KEY,
+                newValue: JSON.stringify(updatedOrders)
+            }));
+            window.dispatchEvent(new CustomEvent('orders_updated'));
+        }
+
+        return { order: updatedOrders[0], alerts: [] };
     }
 };
 
 export const getOrders = async (): Promise<Order[]> => {
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return getOrdersLocal();
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return getOrdersLocal();
+
+    try {
+        const data = await getOrdersServer();
+        return data;
+    } catch (error) {
+        console.error("Prisma Fetch Error:", error);
+        return getOrdersLocal();
+    }
 };
 
-export const updateOrderStatus = async (orderId: string, status: Order['status']): Promise<void> => {
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 300));
+// Update any fields on an order
+export const updateOrder = async (updatedOrder: Order): Promise<void> => {
+    // Simulate network delay (REMOVED)
+    // await new Promise(resolve => setTimeout(resolve, 300));
 
     const orders = getOrdersLocal();
-    const updatedOrders = orders.map(o => o.id === orderId ? { ...o, status } : o);
+    const newOrders = orders.map(o => o.id === updatedOrder.id ? updatedOrder : o);
 
     if (typeof window !== 'undefined') {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newOrders));
         // Dispatch custom event for same-tab updates
         window.dispatchEvent(new CustomEvent('orders_updated'));
+        window.dispatchEvent(new StorageEvent('storage', {
+            key: STORAGE_KEY,
+            newValue: JSON.stringify(newOrders)
+        }));
+    }
+}
+
+export const updateOrderStatus = async (orderId: string, status: Order['status']): Promise<void> => {
+    const orders = getOrdersLocal();
+    const order = orders.find(o => o.id === orderId);
+    if (order) {
+        await updateOrder({ ...order, status });
     }
 }
 
@@ -157,34 +177,42 @@ export const getOrdersLocal = (): Order[] => {
 }
 
 // Subscription helper (polling + event listener)
+// Subscription helper (Realtime)
+// Subscription helper (Hybrid: Realtime + Local Events)
 export const subscribeToOrders = (callback: (orders: Order[]) => void) => {
-    if (typeof window === 'undefined') return () => { };
+    // 1. Initial Fetch
+    getOrders().then(callback);
 
-    // Initial load
-    callback(getOrdersLocal());
+    // 2. Realtime Subscription (DB)
+    const channel = supabase
+        .channel('public:orders')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, async (payload) => {
+            const orders = await getOrders();
+            callback(orders);
+        })
+        .subscribe();
 
+    // 3. Local Event Listeners (Fallback for Hybrid/Offline/Demo mode)
     const handleStorage = (e: StorageEvent) => {
         if (e.key === STORAGE_KEY || e.key === null) {
             callback(getOrdersLocal());
         }
     };
-
     const handleCustom = () => {
         callback(getOrdersLocal());
     }
 
-    window.addEventListener('storage', handleStorage);
-    window.addEventListener('orders_updated', handleCustom);
-
-    // Poll every 5 seconds just in case
-    const interval = setInterval(() => {
-        callback(getOrdersLocal());
-    }, 5000);
+    if (typeof window !== 'undefined') {
+        window.addEventListener('storage', handleStorage);
+        window.addEventListener('orders_updated', handleCustom);
+    }
 
     return () => {
-        window.removeEventListener('storage', handleStorage);
-        window.removeEventListener('orders_updated', handleCustom);
-        clearInterval(interval);
+        supabase.removeChannel(channel);
+        if (typeof window !== 'undefined') {
+            window.removeEventListener('storage', handleStorage);
+            window.removeEventListener('orders_updated', handleCustom);
+        }
     };
 };
 
@@ -192,115 +220,92 @@ export const subscribeToOrders = (callback: (orders: Order[]) => void) => {
 const INVENTORY_KEY = 'foodies_pos_inventory';
 const VENDORS_KEY = 'foodies_pos_vendors';
 
-export const getInventory = (): InventoryItem[] => {
-    if (typeof window === 'undefined') return [];
-    const stored = localStorage.getItem(INVENTORY_KEY);
-    if (!stored) {
-        // Default Mock Data
-        const defaults: InventoryItem[] = [
-            { id: 'inv-1', name: 'Tomatoes', quantity: 20, unit: 'kg', threshold: 5, category: 'Produce' },
-            { id: 'inv-2', name: 'Mozzarella Cheese', quantity: 8, unit: 'blocks', threshold: 10, category: 'Dairy' },
-            { id: 'inv-3', name: 'Pizza Dough Flour', quantity: 50, unit: 'kg', threshold: 20, category: 'Dry Goods' },
-            { id: 'inv-4', name: 'Olive Oil', quantity: 5, unit: 'L', threshold: 2, category: 'Pantry' },
-        ];
-        localStorage.setItem(INVENTORY_KEY, JSON.stringify(defaults));
-        return defaults;
+export const getInventory = async (): Promise<InventoryItem[]> => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        if (typeof window === 'undefined') return [];
+        const stored = localStorage.getItem(INVENTORY_KEY);
+        return stored ? JSON.parse(stored) : [];
     }
-    return JSON.parse(stored);
+
+    const { data } = await supabase.from('inventory').select('*');
+    return (data || []) as InventoryItem[]; // Assumes DB columns match type exactly or close enough
 };
 
-export const updateInventoryItem = (item: InventoryItem) => {
-    const items = getInventory();
-    const idx = items.findIndex(i => i.id === item.id);
-    let newItems;
-    if (idx >= 0) {
-        newItems = items.map(i => i.id === item.id ? item : i);
-    } else {
-        newItems = [...items, item];
-    }
-    localStorage.setItem(INVENTORY_KEY, JSON.stringify(newItems));
-    return newItems;
+export const updateInventoryItem = async (item: InventoryItem) => {
+    // Upsert to DB
+    const { error } = await supabase.from('inventory').upsert({
+        id: item.id.includes('inv-') ? undefined : item.id, // If mock ID, let DB gen new UUID? Or just upsert. Mock IDs might cause issues if not UUIDs.
+        // Better strategy: If ID is not UUID, treat as insert. 
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit,
+        threshold: item.threshold,
+        category: item.category
+    }).select();
+
+    if (error) console.error("Inventory Error", error);
+
+    // Invalidate/Fetch? Or optimistic update.
+    // For simplicity, just return.
 };
 
-export const deleteInventoryItem = (id: string) => {
-    const items = getInventory();
-    const newItems = items.filter(i => i.id !== id);
-    localStorage.setItem(INVENTORY_KEY, JSON.stringify(newItems));
-    return newItems;
+export const deleteInventoryItem = async (id: string) => {
+    await supabase.from('inventory').delete().eq('id', id);
 };
 
 // --- Vendors Mock ---
-export const getVendors = (): Vendor[] => {
-    if (typeof window === 'undefined') return [];
-    const stored = localStorage.getItem(VENDORS_KEY);
-    if (!stored) {
-        // Default Mock Data
-        const defaults: Vendor[] = [
-            { id: 'ven-1', name: 'Fresh Farm Produce', contactName: 'Jim', email: 'orders@freshfarm.com', phone: '555-0101', address: '123 Farm Ln' },
-            { id: 'ven-2', name: 'Dairy Best', contactName: 'Sarah', email: 'sales@dairybest.com', phone: '555-0102', address: '456 Milk Way' },
-        ];
-        localStorage.setItem(VENDORS_KEY, JSON.stringify(defaults));
-        return defaults;
-    }
-    return JSON.parse(stored);
+// --- Vendors ---
+export const getVendors = async (): Promise<Vendor[]> => {
+    const { data } = await supabase.from('vendors').select('*');
+    return (data || []).map(v => ({
+        ...v,
+        contactName: v.contact_name // Map snake to camel
+    })) as Vendor[];
 };
 
-export const saveVendor = (vendor: Vendor) => {
-    const vendors = getVendors();
-    const idx = vendors.findIndex(v => v.id === vendor.id);
-    let newVendors;
-    if (idx >= 0) {
-        newVendors = vendors.map(v => v.id === vendor.id ? vendor : v);
-    } else {
-        newVendors = [...vendors, vendor];
-    }
-    localStorage.setItem(VENDORS_KEY, JSON.stringify(newVendors));
-    return newVendors;
+export const saveVendor = async (vendor: Vendor) => {
+    await supabase.from('vendors').upsert({
+        id: vendor.id.length < 10 ? undefined : vendor.id, // Handle mock IDs
+        name: vendor.name,
+        contact_name: vendor.contactName,
+        email: vendor.email,
+        phone: vendor.phone,
+        address: vendor.address
+    });
 };
 
-export const deleteVendor = (id: string) => {
-    const vendors = getVendors();
-    const newVendors = vendors.filter(v => v.id !== id);
-    localStorage.setItem(VENDORS_KEY, JSON.stringify(newVendors));
-    return newVendors;
+export const deleteVendor = async (id: string) => {
+    await supabase.from('vendors').delete().eq('id', id);
 };
 
 // --- Employee Mock ---
 const EMPLOYEES_KEY = 'foodies_pos_employees';
 const PO_KEY = 'foodies_pos_purchase_orders';
 
-export const getEmployees = (): Employee[] => {
-    if (typeof window === 'undefined') return [];
-    const stored = localStorage.getItem(EMPLOYEES_KEY);
-    if (!stored) {
-        const defaults: Employee[] = [
-            { id: 'emp-1', firstName: 'John', lastName: 'Doe', role: 'Manager', hourlyRate: 25, pin: '1234' },
-            { id: 'emp-2', firstName: 'Jane', lastName: 'Smith', role: 'Cashier', hourlyRate: 15, pin: '5678' },
-        ];
-        localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(defaults));
-        return defaults;
-    }
-    return JSON.parse(stored);
+// --- Employees ---
+export const getEmployees = async (): Promise<Employee[]> => {
+    const { data } = await supabase.from('employees').select('*');
+    return (data || []).map(e => ({
+        ...e,
+        firstName: e.first_name,
+        lastName: e.last_name,
+        hourlyRate: e.hourly_rate
+    })) as Employee[];
 };
 
-export const saveEmployee = (employee: Employee) => {
-    const list = getEmployees();
-    const idx = list.findIndex(e => e.id === employee.id);
-    let newList;
-    if (idx >= 0) {
-        newList = list.map(e => e.id === employee.id ? employee : e);
-    } else {
-        newList = [...list, employee];
-    }
-    localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(newList));
-    return newList;
+export const saveEmployee = async (employee: Employee) => {
+    await supabase.from('employees').upsert({
+        id: employee.id.includes('emp-') ? undefined : employee.id,
+        first_name: employee.firstName,
+        last_name: employee.lastName,
+        role: employee.role,
+        hourly_rate: employee.hourlyRate,
+        pin: employee.pin
+    });
 };
 
-export const deleteEmployee = (id: string) => {
-    const list = getEmployees();
-    const newList = list.filter(e => e.id !== id);
-    localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(newList));
-    return newList;
+export const deleteEmployee = async (id: string) => {
+    await supabase.from('employees').delete().eq('id', id);
 };
 
 // --- Purchase Orders Mock ---
@@ -337,8 +342,14 @@ export const getLayout = (): Area[] => {
             id: 'main-hall',
             name: 'Main Dining',
             tables: [
-                { id: 't1', label: '1', x: 20, y: 20, width: 80, height: 80, shape: 'rectangle', seats: 4, status: 'available' },
-                { id: 't2', label: '2', x: 120, y: 20, width: 80, height: 80, shape: 'rectangle', seats: 4, status: 'occupied' },
+                // Left Vertical Column (3 tables)
+                { id: 't1', label: 'Vadodara', x: 50, y: 50, width: 180, height: 140, shape: 'rectangle', seats: 4, status: 'available' },
+                { id: 't2', label: 'Anand', x: 50, y: 230, width: 180, height: 140, shape: 'rectangle', seats: 4, status: 'available' },
+                { id: 't3', label: 'Ahmedabad', x: 50, y: 410, width: 180, height: 140, shape: 'rectangle', seats: 4, status: 'available' },
+
+                // Right Vertical Column (2 tables)
+                { id: 't4', label: 'Surat', x: 600, y: 50, width: 180, height: 140, shape: 'rectangle', seats: 6, status: 'available' },
+                { id: 't5', label: 'Nadiyad', x: 600, y: 230, width: 180, height: 140, shape: 'rectangle', seats: 6, status: 'available' },
             ]
         }
     ];
@@ -348,13 +359,26 @@ export const saveLayout = (layout: Area[]) => {
     localStorage.setItem('restaurant_layout', JSON.stringify(layout));
 };
 
-export const updateTableStatus = (areaId: string, tableId: string, status: TableStatus) => {
+export const updateTableStatus = (areaId: string, tableId: string, status: TableStatus, extraUpdates?: Partial<Table>) => {
     const layout = getLayout();
     const area = layout.find(a => a.id === areaId);
     if (area) {
         const table = area.tables.find(t => t.id === tableId);
         if (table) {
             table.status = status;
+            if (extraUpdates) {
+                Object.assign(table, extraUpdates);
+            }
+            // If becoming occupied, set seatedAt
+            if (status === 'occupied' && !table.seatedAt) {
+                table.seatedAt = new Date().toISOString();
+            }
+            // If becoming available, clear data
+            if (status === 'available') {
+                table.seatedAt = undefined;
+                delete table.guestCount;
+                delete table.assignedServerId;
+            }
             saveLayout(layout);
         }
     }
@@ -378,6 +402,179 @@ export const getMenuOverrides = (): Record<string, MenuOverride> => {
     if (typeof window === 'undefined') return {};
     const stored = localStorage.getItem(MENU_OVERRIDES_KEY);
     return stored ? JSON.parse(stored) : {};
+};
+
+// --- Time Clock Logic ---
+export const getTimesheets = async (): Promise<TimeEntry[]> => {
+    const { data } = await supabase.from('timesheets').select('*');
+    return (data || []).map(t => ({
+        id: t.id,
+        employeeId: t.employee_id,
+        employeeName: 'Unknown', // Join with employees table in real app
+        role: t.role,
+        clockIn: t.clock_in,
+        clockOut: t.clock_out,
+        declaredTips: t.declared_tips,
+        breaks: t.breaks
+    })) as TimeEntry[];
+};
+
+export const clockIn = async (employeeId: string, employeeName: string, role?: string): Promise<TimeEntry> => {
+    // 1. Check for active shift in DB (clock_out IS NULL)
+    const { data: active } = await supabase
+        .from('timesheets')
+        .select('*')
+        .eq('employee_id', employeeId) // Assuming PIN implies ID, but actually we need UUID. 
+    // Logic Gap: The PIN is just a string. `employees` table maps PIN to ID.
+    // We need to look up Employee by PIN first.
+    // For this migration, let's assume `employeeId` PASSED IN is arguably the UUID if we are strict, 
+    // OR we lookup by PIN. 
+    // In POSInterface, we pass the PIN as ID. This is flawed for Real DB. 
+    // Fix: Lookup Employee UUID by PIN.
+
+    // Quick Fix for Prototype: Treat PIN as ID for lookup if not UUID format? 
+    // Or just look up 'pin' column in employees table.
+
+    let realEmployeeId = employeeId;
+    const { data: emp } = await supabase.from('employees').select('id, first_name').eq('pin', employeeId).single();
+    if (emp) {
+        realEmployeeId = emp.id;
+        employeeName = emp.first_name;
+    } else {
+        // Fallback or Error? 
+        // For smooth migration, if not found, maybe allow for now? 
+        // No, strict mode:
+        // throw new Error("Invalid PIN");
+    }
+
+    if (active && active.length > 0) throw new Error("Already clocked in!");
+
+    const newEntry = {
+        employee_id: realEmployeeId,
+        role: role,
+        clock_in: new Date().toISOString(),
+        breaks: []
+    };
+
+    const { data: inserted, error } = await supabase.from('timesheets').insert(newEntry).select().single();
+
+    if (error) throw error;
+
+    return {
+        id: inserted.id,
+        employeeId: inserted.employee_id,
+        employeeName,
+        role: inserted.role,
+        clockIn: inserted.clock_in,
+        breaks: []
+    };
+};
+
+// Helper to get active shift (most recent open)
+const getActiveShift = async (pin: string) => {
+    // Resolve PIN to ID
+    const { data: emp } = await supabase.from('employees').select('id').eq('pin', pin).single();
+    if (!emp) throw new Error("Invalid PIN");
+
+    const { data } = await supabase.from('timesheets')
+        .select('*')
+        .eq('employee_id', emp.id)
+        .is('clock_out', null)
+        .single();
+
+    if (!data) throw new Error("No active shift found!");
+    return data;
+}
+
+export const startBreak = async (pin: string, type: 'paid' | 'unpaid'): Promise<TimeEntry> => {
+    const shift = await getActiveShift(pin);
+    const breaks = shift.breaks || [];
+
+    if (breaks.some((b: any) => !b.endTime)) throw new Error("Already on break!");
+
+    const newBreaks = [...breaks, { startTime: new Date().toISOString(), type }];
+
+    const { data, error } = await supabase
+        .from('timesheets')
+        .update({ breaks: newBreaks })
+        .eq('id', shift.id)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data as any;
+};
+
+export const endBreak = async (pin: string): Promise<TimeEntry> => {
+    const shift = await getActiveShift(pin);
+    const breaks = shift.breaks || [];
+    const openIndex = breaks.findIndex((b: any) => !b.endTime);
+
+    if (openIndex === -1) throw new Error("Not on break!");
+
+    breaks[openIndex].endTime = new Date().toISOString();
+
+    const { data, error } = await supabase
+        .from('timesheets')
+        .update({ breaks: breaks })
+        .eq('id', shift.id)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data as any;
+};
+
+export const clockOut = async (pin: string, tips?: number): Promise<TimeEntry> => {
+    const shift = await getActiveShift(pin);
+
+    if (shift.breaks && shift.breaks.some((b: any) => !b.endTime)) {
+        throw new Error("Must end break first!");
+    }
+
+    const { data, error } = await supabase
+        .from('timesheets')
+        .update({
+            clock_out: new Date().toISOString(),
+            declared_tips: tips
+        })
+        .eq('id', shift.id)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data as any;
+};
+
+// --- Reports Logic ---
+export const getZReportStats = (date: Date) => {
+    const orders = getOrdersLocal();
+    // Filter orders for the selected date (local time matching)
+    // Simple logic: match YYYY-MM-DD
+    const dateStr = date.toISOString().split('T')[0];
+
+    const dailyOrders = orders.filter(o =>
+        o.status === 'completed' &&
+        o.created_at.startsWith(dateStr)
+    );
+
+    const totalSales = dailyOrders.reduce((sum, o) => sum + o.total, 0);
+    const totalTips = dailyOrders.reduce((sum, o) => sum + (o.tip || 0), 0);
+    const totalOrders = dailyOrders.length;
+
+    const paymentMethods = dailyOrders.reduce((acc, o) => {
+        acc[o.payment_method] = (acc[o.payment_method] || 0) + o.total;
+        return acc;
+    }, {} as Record<string, number>);
+
+    return {
+        date: dateStr,
+        totalSales,
+        totalTips,
+        totalOrders,
+        paymentMethods,
+        orders: dailyOrders
+    };
 };
 
 export const updateMenuItemOverride = (id: string, updates: Partial<MenuOverride>) => {

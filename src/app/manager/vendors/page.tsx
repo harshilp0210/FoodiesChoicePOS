@@ -17,8 +17,8 @@ export default function VendorsPage() {
         loadData();
     }, []);
 
-    const loadData = () => {
-        const data = getVendors();
+    const loadData = async () => {
+        const data = await getVendors();
         setVendors(data);
         setIsLoading(false);
     };
@@ -34,14 +34,15 @@ export default function VendorsPage() {
         setIsFormOpen(true);
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (confirm('Are you sure you want to remove this vendor?')) {
-            const updated = deleteVendor(id);
+            await deleteVendor(id);
+            const updated = await getVendors();
             setVendors(updated);
         }
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const newVendor: Vendor = {
             id: editingVendor ? editingVendor.id : uuidv4(),
@@ -51,7 +52,8 @@ export default function VendorsPage() {
             phone: formData.phone || '',
             address: formData.address || '',
         };
-        const updated = saveVendor(newVendor);
+        await saveVendor(newVendor);
+        const updated = await getVendors();
         setVendors(updated);
         setIsFormOpen(false);
     };

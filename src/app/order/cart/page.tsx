@@ -12,12 +12,15 @@ export default function CartPage() {
     const { cartItems, removeFromCart, updateQuantity, subtotal, tax, total, clearCart } = useCart();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
+    const [showUpsell, setShowUpsell] = useState(true); // [NEW] Upsell visibility
 
     // Guest Form State
     const [formData, setFormData] = useState({
         name: '',
         phone: '',
-        time: 'ASAP'
+        time: 'ASAP',
+        orderType: 'pickup' as 'pickup' | 'delivery',
+        address: ''
     });
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -34,7 +37,9 @@ export default function CartPage() {
             tableId: 'online', // Critical marker for KDS
             customerName: formData.name,
             customerPhone: formData.phone,
-            orderType: 'pickup'
+            orderType: formData.orderType,
+            deliveryAddress: formData.orderType === 'delivery' ? formData.address : undefined,
+            deliveryStatus: formData.orderType === 'delivery' ? 'pending-assignment' : undefined
         };
 
         // Simulate network delay
@@ -105,7 +110,7 @@ export default function CartPage() {
                                             onClick={() => updateQuantity(item.id, item.quantity - 1)}
                                             className="w-8 h-8 flex items-center justify-center hover:bg-slate-50 text-slate-500"
                                         >-</button>
-                                        <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
+                                        <span className="w-8 text-center text-sm font-medium text-slate-900">{item.quantity}</span>
                                         <button
                                             onClick={() => updateQuantity(item.id, item.quantity + 1)}
                                             className="w-8 h-8 flex items-center justify-center hover:bg-slate-50 text-slate-500"
@@ -130,6 +135,35 @@ export default function CartPage() {
                     <span className="bg-slate-900 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm">2</span>
                     Checkout
                 </h2>
+
+                {/* [NEW] Dessert Upsell */}
+                {showUpsell && (
+                    <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-4 animate-in fade-in slide-in-from-bottom-2">
+                        <div className="flex justify-between items-start mb-2">
+                            <h3 className="font-bold text-orange-900">Sweeten the deal? 🍰</h3>
+                            <button onClick={() => setShowUpsell(false)} className="text-orange-400 hover:text-orange-600"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                        <p className="text-sm text-orange-800 mb-3">Add a dessert before you checkout!</p>
+                        <div className="flex gap-2 overflow-x-auto pb-2">
+                            {/* Mock Upsell Items - In real app, fetch from category 'Dessert' */}
+                            <div className="min-w-[120px] bg-white rounded-lg p-2 border border-orange-100 shadow-sm">
+                                <div className="h-20 bg-slate-100 rounded-md mb-2 relative overflow-hidden">
+                                    <img src="/images/dessert.png" className="object-cover w-full h-full" alt="Gulab Jamun" />
+                                </div>
+                                <p className="font-bold text-xs truncate">Gulab Jamun</p>
+                                <p className="text-xs text-slate-500">$5.00</p>
+                            </div>
+                            <div className="min-w-[120px] bg-white rounded-lg p-2 border border-orange-100 shadow-sm">
+                                <div className="h-20 bg-slate-100 rounded-md mb-2 relative overflow-hidden">
+                                    <img src="/images/dessert.png" className="object-cover w-full h-full" alt="Ice Cream" />
+                                </div>
+                                <p className="font-bold text-xs truncate">Mango Lassi</p>
+                                <p className="text-xs text-slate-500">$4.50</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-lg">
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div>
@@ -156,17 +190,48 @@ export default function CartPage() {
                             />
                         </div>
 
+                        {/* [NEW] Phone Number Input */}
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number <span className="text-red-500">*</span></label>
                             <input
                                 required
                                 type="tel"
-                                placeholder="(555) 000-0000"
+                                placeholder="(555) 123-4567"
                                 className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary/50 outline-none text-slate-900 placeholder:text-slate-400"
                                 value={formData.phone}
                                 onChange={e => setFormData({ ...formData, phone: e.target.value })}
                             />
                         </div>
+
+                        <div className="flex gap-4 mb-4">
+                            <button
+                                type="button"
+                                onClick={() => setFormData({ ...formData, orderType: 'pickup' })}
+                                className={`flex-1 py-3 rounded-xl border font-bold transition-all ${formData.orderType === 'pickup' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                            >
+                                Pickup
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setFormData({ ...formData, orderType: 'delivery' })}
+                                className={`flex-1 py-3 rounded-xl border font-bold transition-all ${formData.orderType === 'delivery' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                            >
+                                Delivery
+                            </button>
+                        </div>
+
+                        {formData.orderType === 'delivery' && (
+                            <div className="animate-in slide-in-from-top-2 duration-200">
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Delivery Address</label>
+                                <textarea
+                                    required
+                                    placeholder="123 Main St, Apt 4B..."
+                                    className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary/50 outline-none text-slate-900 placeholder:text-slate-400 min-h-[80px]"
+                                    value={formData.address}
+                                    onChange={e => setFormData({ ...formData, address: e.target.value })}
+                                />
+                            </div>
+                        )}
 
                         <div className="pt-4 border-t border-slate-100 space-y-2">
                             <div className="flex justify-between text-slate-500 text-sm">
@@ -174,7 +239,7 @@ export default function CartPage() {
                                 <span>${subtotal.toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between text-slate-500 text-sm">
-                                <span>Tax (10%)</span>
+                                <span>Service Charge (10%)</span>
                                 <span>${tax.toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between text-xl font-bold text-slate-900 pt-2">

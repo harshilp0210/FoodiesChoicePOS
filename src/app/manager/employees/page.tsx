@@ -13,7 +13,7 @@ export default function EmployeesPage() {
     const [formData, setFormData] = useState<Partial<Employee>>({});
 
     useEffect(() => {
-        setEmployees(getEmployees());
+        getEmployees().then(setEmployees);
     }, []);
 
     const handleOpenForm = (emp?: Employee) => {
@@ -27,13 +27,14 @@ export default function EmployeesPage() {
         setIsFormOpen(true);
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (confirm('Delete this employee?')) {
-            setEmployees(deleteEmployee(id));
+            await deleteEmployee(id);
+            getEmployees().then(setEmployees);
         }
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const newEmp: Employee = {
             id: editingEmp ? editingEmp.id : uuidv4(),
@@ -43,7 +44,8 @@ export default function EmployeesPage() {
             hourlyRate: Number(formData.hourlyRate) || 0,
             pin: formData.pin || '0000',
         };
-        setEmployees(saveEmployee(newEmp));
+        await saveEmployee(newEmp);
+        getEmployees().then(setEmployees);
         setIsFormOpen(false);
     };
 

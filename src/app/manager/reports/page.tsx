@@ -1,126 +1,111 @@
 "use client";
 
-import { BarChart3, TrendingUp, Calendar, ArrowUpRight, RefreshCw, CheckCircle } from 'lucide-react';
 import { useState } from 'react';
+import { BarChart3, Receipt, Users, Banknote, ShieldAlert, Calendar, Download } from 'lucide-react';
+import dynamic from 'next/dynamic';
+// Tabs logic will be standard divs as before
+// Let's stick to the existing tab logic but dynamic import the content components.
+
+// Lazy load heavy chart components
+const SalesReports = dynamic(() => import('@/components/reports/SalesReports'), {
+    loading: () => <div className="h-96 w-full animate-pulse bg-slate-100 rounded-xl" />,
+    ssr: false // Charts often needed client-side only anyway
+});
+const MenuReports = dynamic(() => import('@/components/reports/MenuReports'), {
+    loading: () => <div className="h-96 w-full animate-pulse bg-slate-100 rounded-xl" />,
+    ssr: false
+});
+const LaborReports = dynamic(() => import('@/components/reports/LaborReports'), {
+    loading: () => <div className="h-96 w-full animate-pulse bg-slate-100 rounded-xl" />,
+    ssr: false
+});
+const FinancialReports = dynamic(() => import('@/components/reports/FinancialReports'), {
+    loading: () => <div className="h-96 w-full animate-pulse bg-slate-100 rounded-xl" />,
+    ssr: false
+});
+const AuditReports = dynamic(() => import('@/components/reports/AuditReports'), {
+    loading: () => <div className="h-96 w-full animate-pulse bg-slate-100 rounded-xl" />,
+    ssr: false
+});
+const ZReportView = dynamic(() => import('@/components/reports/ZReportView'), {
+    loading: () => <div className="h-96 w-full animate-pulse bg-slate-100 rounded-xl" />,
+    ssr: false
+});
+
+type ReportTab = 'sales' | 'menu' | 'labor' | 'financial' | 'audit' | 'zreport';
 
 export default function ReportsPage() {
-    const [isSyncing, setIsSyncing] = useState(false);
-    const [lastSync, setLastSync] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<ReportTab>('sales');
+    const [dateRange, setDateRange] = useState("This Week");
 
-    const handleSync = () => {
-        setIsSyncing(true);
-        // Simulate API delay
-        setTimeout(() => {
-            setIsSyncing(false);
-            setLastSync(new Date().toLocaleTimeString());
-            alert("Daily Sales synced to QuickBooks successfully!");
-        }, 2000);
-    };
+    const tabs = [
+        { id: 'sales', label: 'Sales Reports', icon: BarChart3 },
+        { id: 'menu', label: 'Menu Analysis', icon: Receipt },
+        { id: 'labor', label: 'Labor & Staff', icon: Users },
+        { id: 'financial', label: 'Financials', icon: Banknote },
+        { id: 'audit', label: 'Audit & Theft', icon: ShieldAlert },
+        { id: 'zreport', label: 'End of Day (Z)', icon: Receipt },
+    ];
 
     return (
-        <div className="space-y-8">
-            <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold tracking-tight text-slate-900">Performance Reports</h2>
-                <div className="flex items-center gap-3">
-                    {lastSync && (
-                        <span className="text-xs text-green-600 font-medium flex items-center gap-1 bg-green-50 px-2 py-1 rounded-full">
-                            <CheckCircle className="w-3 h-3" /> Synced at {lastSync}
-                        </span>
-                    )}
-                    <button
-                        onClick={handleSync}
-                        disabled={isSyncing}
-                        className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-all font-medium text-sm"
-                    >
-                        <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                        {isSyncing ? 'Syncing...' : 'Sync Daily Sales'}
-                    </button>
+        <div className="space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">Reports & Analytics</h2>
+                    <p className="text-slate-500 text-sm">Real-time insights into your business performance.</p>
                 </div>
-            </div>
 
-            {/* Simulated Chart Container */}
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                        <BarChart3 className="w-5 h-5 text-slate-500" />
-                        Weekly Sales Revenue
-                    </h3>
-                    <select className="border rounded-lg px-2 py-1 text-sm bg-slate-50">
+                <div className="flex gap-3">
+                    <select
+                        value={dateRange}
+                        onChange={(e) => setDateRange(e.target.value)}
+                        className="bg-white border border-slate-300 rounded-lg px-4 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/20"
+                    >
+                        <option>Today</option>
+                        <option>Yesterday</option>
                         <option>This Week</option>
                         <option>Last Week</option>
                         <option>This Month</option>
                     </select>
-                </div>
 
-                {/* Visual Fake Chart using CSS Grid/Flex */}
-                <div className="h-64 flex items-end justify-between gap-4 px-4 pb-4 border-b border-l border-slate-200">
-                    {[
-                        { day: 'Mon', val: 40, label: '$400' },
-                        { day: 'Tue', val: 55, label: '$550' },
-                        { day: 'Wed', val: 35, label: '$350' },
-                        { day: 'Thu', val: 70, label: '$700' },
-                        { day: 'Fri', val: 85, label: '$850' },
-                        { day: 'Sat', val: 95, label: '$950' },
-                        { day: 'Sun', val: 60, label: '$600' },
-                    ].map((d, i) => (
-                        <div key={i} className="flex-1 flex flex-col items-center gap-2 group cursor-pointer">
-                            <div className="opacity-0 group-hover:opacity-100 transition-opacity text-xs font-bold text-slate-600 mb-1">{d.label}</div>
-                            <div
-                                className="w-full bg-primary/20 hover:bg-primary transition-colors rounded-t-lg relative group-hover:shadow-lg"
-                                style={{ height: `${d.val}%` }}
-                            />
-                            <span className="text-xs font-medium text-slate-500">{d.day}</span>
-                        </div>
-                    ))}
+                    <button className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium">
+                        <Download className="w-4 h-4" />
+                        Export
+                    </button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                    <h3 className="font-bold text-slate-800 mb-4">Top Selling Items</h3>
-                    <div className="space-y-4">
-                        {[
-                            { name: 'Margherita Pizza', sold: 145, revenue: '$2,175' },
-                            { name: 'Spicy Pepperoni', sold: 112, revenue: '$1,890' },
-                            { name: 'Garlic Bread', sold: 89, revenue: '$445' },
-                        ].map((item, i) => (
-                            <div key={i} className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-xs">
-                                        {i + 1}
-                                    </div>
-                                    <div>
-                                        <p className="font-medium text-slate-900">{item.name}</p>
-                                        <p className="text-xs text-slate-500">{item.sold} sold</p>
-                                    </div>
-                                </div>
-                                <span className="font-bold text-slate-700">{item.revenue}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+            {/* Navigation Tabs */}
+            <div className="border-b border-slate-200 flex overflow-x-auto scrollbar-none gap-6">
+                {tabs.map((tab) => {
+                    const Icon = tab.icon;
+                    const isActive = activeTab === tab.id;
+                    return (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id as ReportTab)}
+                            className={`flex items-center gap-2 pb-3 px-1 border-b-2 transition-colors whitespace-nowrap font-medium text-sm ${isActive
+                                ? 'border-primary text-primary'
+                                : 'border-transparent text-slate-500 hover:text-slate-700'
+                                }`}
+                        >
+                            <Icon className="w-4 h-4" />
+                            {tab.label}
+                        </button>
+                    );
+                })}
+            </div>
 
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                    <h3 className="font-bold text-slate-800 mb-4">Category Breakdown</h3>
-                    <div className="space-y-4">
-                        {[
-                            { cat: 'Pizza', pct: '65%', color: 'bg-primary' },
-                            { cat: 'Beverages', pct: '20%', color: 'bg-blue-500' },
-                            { cat: 'Sides', pct: '15%', color: 'bg-green-500' },
-                        ].map((c, i) => (
-                            <div key={i}>
-                                <div className="flex justify-between text-sm mb-1">
-                                    <span className="font-medium text-slate-700">{c.cat}</span>
-                                    <span className="text-slate-500">{c.pct}</span>
-                                </div>
-                                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                                    <div className={`h-full ${c.color}`} style={{ width: c.pct }} />
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+            {/* Tab Content */}
+            <div className="min-h-[500px]">
+                {activeTab === 'sales' && <SalesReports />}
+                {activeTab === 'menu' && <MenuReports />}
+                {activeTab === 'labor' && <LaborReports />}
+                {activeTab === 'financial' && <FinancialReports />}
+                {activeTab === 'audit' && <AuditReports />}
+                {activeTab === 'zreport' && <ZReportView />}
             </div>
         </div>
     );
 }
+

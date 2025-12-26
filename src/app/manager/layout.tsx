@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 const sidebarItems = [
     { name: 'Dashboard', href: '/manager/dashboard', icon: LayoutDashboard },
     { name: 'Start KDS Mode', href: '/kitchen', icon: ClipboardList },
+    { name: 'Delivery Dispatch', href: '/manager/delivery', icon: Truck },
     { name: 'Inventory', href: '/manager/inventory', icon: Package },
     { name: 'Employees', href: '/manager/employees', icon: Users },
     { name: 'Menu & 86', href: '/manager/menu', icon: FileText }, // Using FileText or similar
@@ -70,6 +71,7 @@ export default function ManagerLayout({ children }: { children: React.ReactNode 
                             <Link
                                 key={item.href}
                                 href={item.href}
+                                prefetch={true}
                                 className={cn(
                                     "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                                     isActive

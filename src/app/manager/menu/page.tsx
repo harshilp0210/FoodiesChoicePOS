@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react';
 import { getMenuData } from '@/lib/menu-data';
 import { getMenuOverrides, updateMenuItemOverride, MenuOverride, getInventory } from '@/lib/supabase';
-import { Category, MenuItem } from '@/lib/types';
+import { Category, MenuItem, InventoryItem } from '@/lib/types'; // Import InventoryItem
 import { Search, Save, AlertCircle } from 'lucide-react';
 
 export default function MenuManagerPage() {
     const [categories, setCategories] = useState<Category[]>([]);
+    const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]); // New State
     const [overrides, setOverrides] = useState<Record<string, MenuOverride>>({});
     const [searchQuery, setSearchQuery] = useState('');
     const [isLoading, setIsLoading] = useState(true);
@@ -15,27 +16,18 @@ export default function MenuManagerPage() {
     // Initial Data Load
     useEffect(() => {
         async function loadData() {
-            // In a real app, this would be an API call. 
-            // Since getMenuData is server-side node logic (fs), we can't call it directly in client component easily 
-            // without a Server Action or API Route. 
-            // For this persistent mock, we'll fetch from a new API route or pass it as props if this was a server component.
-            // But since we are strictly client-side for state here, let's fetch from the API we are about to create, 
-            // OR for now, since we haven't made an API, let's assume we fetch from a Client-compatible source 
-            // or just move getMenuData logic to an API route.
-
-            // ACTUALLY: getMenuData uses 'fs' so it MUST run on server. 
-            // We need a Server Action or API Route. 
-            // Let's quickly create a simplistic client-side compatible loader or fetch from an API.
-
-            // To save time and keep it simple: We will fetch the CSV via fetch('/menu.csv') and parse it client-side
-            // mirroring the server-logic, OR better: create a simple API route.
-
-            // Let's assume we'll create the API route /api/menu in the next step.
+            // ... (existing api fetch logic) ...
             const res = await fetch('/api/menu');
             if (res.ok) {
                 const data = await res.json();
                 setCategories(data);
             }
+
+            // Fetch Inventory for Cost Calc
+            try {
+                const inv = await getInventory();
+                setInventoryItems(inv);
+            } catch (e) { console.error(e); }
 
             setOverrides(getMenuOverrides());
             setIsLoading(false);
@@ -45,9 +37,7 @@ export default function MenuManagerPage() {
 
     const handleToggleAvailability = (item: MenuItem) => {
         const currentOverride = overrides[item.id] || {};
-        // If override has 'available' set, usage that, else use item.available (default true)
         const currentStatus = currentOverride.available !== undefined ? currentOverride.available : item.available;
-
         const newStatus = !currentStatus;
         updateMenuItemOverride(item.id, { available: newStatus });
         setOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], available: newStatus } }));
@@ -56,11 +46,11 @@ export default function MenuManagerPage() {
     const handlePriceChange = (item: MenuItem, newPrice: string) => {
         const price = parseFloat(newPrice);
         if (isNaN(price)) return;
-
         updateMenuItemOverride(item.id, { price });
         setOverrides(prev => ({ ...prev, [item.id]: { ...prev[item.id], price } }));
     };
 
+    // ... (render) ...
     if (isLoading) return <div className="p-8">Loading menu...</div>;
 
     const allItems = categories.flatMap(c => c.items);
@@ -100,9 +90,8 @@ export default function MenuManagerPage() {
                     // Calculate Recipe Cost
                     let recipeCost = 0;
                     if (override?.recipe) {
-                        const inventory = getInventory();
                         override.recipe.forEach(ing => {
-                            const invItem = inventory.find(i => i.id === ing.inventoryItemId);
+                            const invItem = inventoryItems.find(i => i.id === ing.inventoryItemId); // Use State
                             if (invItem && invItem.costPerUnit) {
                                 recipeCost += (invItem.costPerUnit * ing.quantity);
                             }

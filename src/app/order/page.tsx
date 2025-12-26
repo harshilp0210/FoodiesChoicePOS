@@ -1,20 +1,48 @@
 "use client";
 
-import MenuGrid from '@/components/pos/MenuGrid';
 import { useEffect, useState } from 'react';
 import { Category, MenuItem } from '@/lib/types';
+import MenuGrid from '@/components/pos/MenuGrid';
+import CategoryTabs from '@/components/pos/CategoryTabs';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+
+const ITEMS_PER_PAGE = 9;
 
 export default function OrderPage() {
-    const [items, setItems] = useState<MenuItem[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [selectedCategory, setSelectedCategory] = useState("All");
+    const [currentPage, setCurrentPage] = useState(1);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         fetch('/api/menu')
             .then(res => res.json())
             .then((data: Category[]) => {
-                const allItems = data.flatMap(c => c.items);
-                setItems(allItems);
+                setCategories(data);
+                setIsLoading(false);
             });
     }, []);
+
+    // Filter items based on category
+    const allItems = categories.flatMap(c => c.items);
+    const filteredItems = selectedCategory === "All"
+        ? allItems
+        : categories.find(c => c.name === selectedCategory)?.items || [];
+
+    // Pagination logic
+    const totalPages = Math.ceil(filteredItems.length / ITEMS_PER_PAGE);
+    const paginatedItems = filteredItems.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE
+    );
+
+    // Reset page when category changes
+    const handleCategoryChange = (category: string) => {
+        setSelectedCategory(category);
+        setCurrentPage(1);
+    };
+
+    const categoryNames = ["All", ...categories.map(c => c.name)];
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
@@ -33,8 +61,61 @@ export default function OrderPage() {
             </div>
 
             <div>
-                <h2 className="text-xl font-bold text-slate-900 mb-4 px-2">Our Menu</h2>
-                <MenuGrid items={items} />
+                <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+                    <h2 className="text-xl font-bold text-slate-900 px-2">Our Menu</h2>
+
+                    {/* Category Tabs */}
+                    <div className="w-full md:w-auto overflow-x-auto">
+                        <CategoryTabs
+                            categories={categoryNames}
+                            activeCategory={selectedCategory}
+                            onSelect={handleCategoryChange}
+                        />
+                    </div>
+                </div>
+
+                {isLoading ? (
+                    <div className="flex justify-center py-20">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+                    </div>
+                ) : (
+                    <>
+                        {paginatedItems.length > 0 ? (
+                            <MenuGrid items={paginatedItems} />
+                        ) : (
+                            <div className="text-center py-20 text-slate-500">
+                                No items found in this category.
+                            </div>
+                        )}
+
+                        {/* Pagination Controls */}
+                        {totalPages > 1 && (
+                            <div className="flex justify-center items-center mt-12 gap-4">
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                    className="p-2 rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    aria-label="Previous Page"
+                                >
+                                    <ChevronLeft className="w-5 h-5" />
+                                </button>
+
+                                <span className="text-sm font-medium text-slate-600">
+                                    Page {currentPage} of {totalPages}
+                                </span>
+
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className="p-2 rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    aria-label="Next Page"
+                                >
+                                    <ChevronRight className="w-5 h-5" />
+                                </button>
+                            </div>
+                        )}
+                    </>
+                )}
             </div>
         </div>
     );

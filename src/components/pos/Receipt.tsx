@@ -3,9 +3,10 @@ import { format } from 'date-fns';
 
 interface ReceiptProps {
     order: Order | null;
+    isBill?: boolean; // [NEW] If true, shows signature lines instead of payment details
 }
 
-export default function Receipt({ order }: ReceiptProps) {
+export default function Receipt({ order, isBill = false }: ReceiptProps) {
     if (!order) return null;
 
     return (
@@ -60,10 +61,44 @@ export default function Receipt({ order }: ReceiptProps) {
                         <span>Tax (10%):</span>
                         <span>£{(order.total - (order.total / 1.1)).toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-lg font-bold border-t border-black pt-2 mt-2">
-                        <span>TOTAL:</span>
-                        <span>£{order.total.toFixed(2)}</span>
-                    </div>
+                    {isBill ? (
+                        <>
+                            <div className="flex justify-between text-lg font-bold border-t border-black pt-4 mt-2">
+                                <span>Total:</span>
+                                <span>£{order.total.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-lg font-bold pt-8">
+                                <span>Tip:</span>
+                                <span className="border-b border-black w-24 inline-block"></span>
+                            </div>
+                            <div className="flex justify-between text-lg font-bold pt-4">
+                                <span>Grand Total:</span>
+                                <span className="border-b border-black w-24 inline-block"></span>
+                            </div>
+                            <div className="text-left pt-12 mt-4">
+                                <p className="text-sm font-bold mb-8">Signature:</p>
+                                <div className="border-b border-black w-full"></div>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="flex justify-between text-lg font-bold border-t border-black pt-2 mt-2">
+                                <span>TOTAL:</span>
+                                <span>£{order.total.toFixed(2)}</span>
+                            </div>
+                            {/* [NEW] Tip Line */}
+                            {order.tip && order.tip > 0 && (
+                                <div className="flex justify-between text-sm mt-1 border-b border-black pb-2 mb-2 border-dashed">
+                                    <span>Tip:</span>
+                                    <span>£{order.tip.toFixed(2)}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between text-xl font-bold pt-1">
+                                <span>PAID:</span>
+                                <span>£{(order.total + (order.tip || 0)).toFixed(2)}</span>
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 {/* Footer */}

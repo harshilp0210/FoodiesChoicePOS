@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Order {
+  id              String       @id @default(uuid())
+  createdAt       DateTime     @default(now()) @map("created_at")
+  status          String       // 'pending', 'completed', 'voided'
+  total           Float
+  tip             Float?       @default(0)
+  serviceCharge   Float?       @default(0)
+  tax             Float?       @default(0)
+  foodSales       Float?       @default(0)
+  drinkSales      Float?       @default(0)
+  paymentMethod   String?      @map("payment_method") // Legacy/Primary method
+  tableId         String?      @map("table_id")
+  guestCount      Int?         @map("guest_count")
+  
+  // Relations
+  items           OrderItem[]
+  payments        Payment[]
+  table           Table?       @relation(fields: [tableId], references: [id])
+  employeeId      String?      @map("employee_id")
+
+  @@map("orders")
+}
+
+model Payment {
+  id              String       @id @default(uuid())
+  orderId         String       @map("order_id")
+  amount          Float
+  method          String       // 'cash', 'card', 'gift_card'
+  tip             Float?       @default(0)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  
+  order           Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model OrderItem {
+  id              String   @id @default(uuid())
+  orderId         String   @map("order_id")
+  menuItemId      String   @map("menu_item_id")
+  name            String?  // Snapshot
+  category        String?  // Snapshot
+  quantity        Int
+  price           Float
+  notes           String?
+  selectedModifiers Json?  @map("selected_modifiers") // Storing modifiers as JSON
+
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
+}
+
+model Table {
+  id              String   @id @default(uuid())
+  label           String
+  x               Int
+  y               Int
+  width           Int
+  height          Int
+  shape           String   @default("rectangle") // 'rectangle' | 'circle'
+  seats           Int
+  status          String   @default("available") // 'available', 'occupied', 'billed', 'cleaning'
+  currentOrderId  String?  @map("current_order_id")
+  seatedAt        DateTime? @map("seated_at")
+  assignedServerId String? @map("assigned_server_id")
+
+  orders          Order[]
+
+  @@map("tables")
+}
+
+model MenuItem {
+  id          String   @id @default(uuid())
+  category    String
+  name        String
+  price       Float
+  description String?
+  image       String?
+  available   Boolean  @default(true)
+  
+  // In a real app, you might relation this to Inventory
+  // For now store simple recipe JSON or relation
+  recipe      Json?    // Array of { inventoryItemId, quantity }
+
+  @@map("menu_items")
+}
+
+model InventoryItem {
+  id          String   @id @default(uuid())
+  name        String
+  quantity    Float    @default(0)
+  unit        String
+  threshold   Float    @default(5)
+  category    String
+  costPerUnit Float?   @map("cost_per_unit")
+
+  @@map("inventory")
+}
+
+model Employee {
+  id          String   @id @default(uuid())
+  firstName   String   @map("first_name")
+  lastName    String   @map("last_name")
+  role        String
+  hourlyRate  Float    @map("hourly_rate")
+  pin         String   @unique
+
+  timesheets  Timesheet[]
+
+  @@map("employees")
+}
+
+model Timesheet {
+  id            String    @id @default(uuid())
+  employeeId    String    @map("employee_id")
+  role          String?
+  clockIn       DateTime  @map("clock_in")
+  clockOut      DateTime? @map("clock_out")
+  declaredTips  Float?    @map("declared_tips")
+  breaks        Json?     // Array of break objects
+
+  employee      Employee  @relation(fields: [employeeId], references: [id])
+
+  @@map("timesheets")
+}
+
+model Vendor {
+  id          String   @id @default(uuid())
+  name        String
+  contactName String?  @map("contact_name")
+  email       String?
+  phone       String?
+  address     String?
+
+  @@map("vendors")
+}

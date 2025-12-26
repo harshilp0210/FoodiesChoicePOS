@@ -5,13 +5,15 @@ import { MenuItem, CartItem } from '@/lib/types';
 
 interface CartContextType {
     cartItems: CartItem[];
-    addToCart: (item: MenuItem) => void;
+    addToCart: (item: MenuItem, quantity?: number, modifiers?: any[], notes?: string) => void;
     removeFromCart: (itemId: string) => void;
     updateQuantity: (itemId: string, quantity: number) => void;
+    updateItem: (itemId: string, updates: Partial<CartItem>) => void; // [NEW]
     clearCart: () => void;
     subtotal: number;
     tax: number;
     total: number;
+    setCartItems: (items: CartItem[]) => void; // [NEW] Exposed for restoring held orders
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -19,15 +21,36 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 export function CartProvider({ children }: { children: React.ReactNode }) {
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
-    const addToCart = (item: MenuItem) => {
+    const addToCart = (item: MenuItem, quantity: number = 1, modifiers: any[] = [], notes: string = "") => {
         setCartItems((prev) => {
-            const existing = prev.find((i) => i.id === item.id);
+            // Create a unique signature for this exact variation
+            // We can check if an item with same ID AND same modifiers AND same notes exists
+            const modSignature = JSON.stringify(modifiers.map(m => m.id).sort());
+
+            const existing = prev.find((i) =>
+                i.id === item.id &&
+                JSON.stringify((i.selectedModifiers || []).map(m => m.id).sort()) === modSignature &&
+                (i.notes || "") === notes
+            );
+
             if (existing) {
                 return prev.map((i) =>
-                    i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
+                    i.cartId === existing.cartId ? { ...i, quantity: i.quantity + quantity } : i
                 );
             }
-            return [...prev, { ...item, quantity: 1, cartId: self.crypto.randomUUID() }];
+
+            // Calculate base price override if item has mods price accumulation
+            // But usually price is base + mods. 
+            // The item.price is base. Modifier prices are separate.
+            // When calculating total line item price, we sum them.
+
+            return [...prev, {
+                ...item,
+                quantity,
+                cartId: self.crypto.randomUUID(),
+                selectedModifiers: modifiers,
+                notes
+            }];
         });
     };
 
@@ -45,10 +68,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         );
     };
 
+    const updateItem = (itemId: string, updates: Partial<CartItem>) => {
+        setCartItems(prev => prev.map(i => i.id === itemId ? { ...i, ...updates } : i));
+    };
+
     const clearCart = () => setCartItems([]);
 
     const subtotal = cartItems.reduce(
-        (acc, item) => acc + item.price * item.quantity,
+        (acc, item) => {
+            const modsTotal = (item.selectedModifiers || []).reduce((sum, m) => sum + m.price, 0);
+            return acc + (item.price + modsTotal) * item.quantity;
+        },
         0
     );
 
@@ -82,10 +112,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 addToCart,
                 removeFromCart,
                 updateQuantity,
+                updateItem,
                 clearCart,
                 subtotal,
                 tax,
                 total,
+                setCartItems, // [NEW]
             }}
         >
             {children}

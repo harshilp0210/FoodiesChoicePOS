@@ -17,9 +17,12 @@ export default function PurchaseOrdersPage() {
     const [cart, setCart] = useState<{ itemId: string; quantity: number; cost: number }[]>([]);
 
     useEffect(() => {
-        setVendors(getVendors());
-        setInventory(getInventory());
-        setOrders(getPurchaseOrders());
+        async function loadData() {
+            setVendors(await getVendors());
+            setInventory(await getInventory());
+            setOrders(await getPurchaseOrders());
+        }
+        loadData();
     }, []);
 
     const addToPO = (itemId: string) => {

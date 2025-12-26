@@ -10,8 +10,8 @@ export default function LowStockAlert() {
     const [lowItems, setLowItems] = useState<InventoryItem[]>([]);
 
     useEffect(() => {
-        const checkStock = () => {
-            const inventory = getInventory();
+        const checkStock = async () => {
+            const inventory = await getInventory();
             const low = inventory.filter(item => item.quantity <= item.threshold);
             setLowItems(low);
         };

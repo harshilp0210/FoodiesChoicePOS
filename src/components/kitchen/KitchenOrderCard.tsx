@@ -76,7 +76,24 @@ export default function KitchenOrderCard({ order, onStatusUpdate }: KitchenOrder
                             <div className="flex-1">
                                 <span className={cn("font-bold text-base", order.status === 'ready' ? "line-through text-muted-foreground" : "")}>{item.name}</span>
                                 {item.notes && (
-                                    <p className="text-xs text-red-600 bg-red-50 p-1 rounded mt-1 border border-red-100">Note: {item.notes}</p>
+                                    <p className="text-xs text-red-600 bg-red-50 p-1 rounded mt-1 border border-red-100 italic">Note: {item.notes}</p>
+                                )}
+                                {item.selectedModifiers && item.selectedModifiers.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-1.5">
+                                        {item.selectedModifiers.map(mod => (
+                                            <span
+                                                key={mod.id}
+                                                className={cn(
+                                                    "text-xs px-1.5 py-0.5 rounded border font-bold uppercase tracking-wide",
+                                                    mod.id.includes('spice')
+                                                        ? "bg-orange-100 text-orange-800 border-orange-200"
+                                                        : "bg-slate-100 text-slate-700 border-slate-200"
+                                                )}
+                                            >
+                                                {mod.name}
+                                            </span>
+                                        ))}
+                                    </div>
                                 )}
                             </div>
                         </li>
