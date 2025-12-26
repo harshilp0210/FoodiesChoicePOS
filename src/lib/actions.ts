@@ -317,7 +317,7 @@ export async function getServerShiftStats(employeeId: string, shiftStart: Date):
     let creditSales = 0;
     let totalTips = 0;
 
-    orders.forEach(o => {
+    orders.forEach((o: any) => {
         totalSales += o.total; // Total includes tax usually. Tip outs on Net or Gross? Let's use Gross for simplicity.
 
         // Split Food/Bev
