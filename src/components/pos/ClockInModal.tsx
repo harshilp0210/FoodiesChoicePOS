@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { clockIn, clockOut, startBreak, endBreak, getTimesheets } from '@/lib/supabase';
-import { TimeEntry, EmployeeRole } from '@/lib/types'; // Updated import
+import { clockInServer, clockOutServer, toggleBreakServer, getTimesheetsServer } from '@/lib/actions';
+import { TimeEntry, EmployeeRole } from '@/lib/types';
 import { X, Clock, UserCheck, UserX, AlertCircle, Coffee, DollarSign } from 'lucide-react';
 
 interface ClockInModalProps {
@@ -30,12 +30,9 @@ export default function ClockInModal({ onClose }: ClockInModalProps) {
     const handlePinSubmit = async () => {
         if (!pin) return;
 
-        // Mock Auth: Retrieve active shift for this "user"
-        // In real app, we'd fetch user by PIN first.
         try {
-            const allSheets = await getTimesheets();
-            // We simulate user ID being the PIN for this mock
-            const entry = allSheets.find(e => e.employeeId === pin && !e.clockOut);
+            const allSheets = await getTimesheetsServer();
+            const entry = allSheets.find((e: any) => e.employeeId === pin && !e.clockOut);
 
             if (entry) {
                 setActiveEntry(entry);
@@ -47,7 +44,7 @@ export default function ClockInModal({ onClose }: ClockInModalProps) {
             setStatus('idle');
         } catch (e: any) {
             setStatus('error');
-            setMessage("Invalid PIN");
+            setMessage(e.message || "Invalid PIN");
         }
     };
 
@@ -58,13 +55,13 @@ export default function ClockInModal({ onClose }: ClockInModalProps) {
 
     const confirmClockIn = async () => {
         try {
-            await clockIn(pin, `Staff ${pin}`, selectedRole);
+            await clockInServer(pin, selectedRole);
             setStatus('success');
             setMessage("Clocked In Successfully");
             setTimeout(onClose, 1500);
         } catch (e: any) {
             setStatus('error');
-            setMessage(e.message);
+            setMessage(e.message || "Clock-in failed");
         }
     };
 
@@ -76,36 +73,30 @@ export default function ClockInModal({ onClose }: ClockInModalProps) {
     const confirmClockOut = async () => {
         try {
             const tipVal = parseFloat(tips) || 0;
-            await clockOut(pin, tipVal);
+            await clockOutServer(pin, tipVal);
             setStatus('success');
             setMessage("Shift Ended. Good job!");
             setTimeout(onClose, 1500);
         } catch (e: any) {
             setStatus('error');
-            setMessage(e.message);
-            // If error is "open checks", show it clearly
+            setMessage(e.message || "Clock-out failed");
         }
     };
 
     const handleBreak = async (type: 'start' | 'end') => {
         try {
-            if (type === 'start') {
-                await startBreak(pin, 'unpaid'); // default unpaid
-                setMessage("Break Started");
-            } else {
-                await endBreak(pin);
-                setMessage("Welcome Back");
-            }
+            await toggleBreakServer(pin, type);
+            setMessage(type === 'start' ? "Break Started" : "Welcome Back");
             setStatus('success');
 
-            // Refresh Active Entry to showing correct break status
-            const allSheets = await getTimesheets();
-            const entry = allSheets.find(e => e.employeeId === pin && !e.clockOut);
+            // Refresh Active Entry
+            const allSheets = await getTimesheetsServer();
+            const entry = allSheets.find((e: any) => e.employeeId === pin && !e.clockOut);
             setActiveEntry(entry || null);
 
         } catch (e: any) {
             setStatus('error');
-            setMessage(e.message);
+            setMessage(e.message || "Break action failed");
         }
     };
 

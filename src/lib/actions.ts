@@ -451,3 +451,126 @@ async function reverseInventoryDepletion(order: Order) {
         }
     }
 }
+
+// --- Time Clock Server Actions ---
+
+export async function getTimesheetsServer(): Promise<TimeEntry[]> {
+    try {
+        const timesheets = await prisma.timesheet.findMany({
+            orderBy: { clockIn: 'desc' },
+            take: 50,
+            include: { employee: true }
+        });
+
+        return timesheets.map((t: any) => ({
+            id: t.id,
+            employeeId: t.employee.pin,
+            employeeName: `${t.employee.firstName} ${t.employee.lastName}`,
+            role: t.role,
+            clockIn: t.clockIn.toISOString(),
+            clockOut: t.clockOut ? t.clockOut.toISOString() : null,
+            declaredTips: t.declaredTips,
+            breaks: t.breaks ? JSON.parse(JSON.stringify(t.breaks)) : []
+        }));
+    } catch (e) {
+        console.error("Error fetching timesheets:", e);
+        return [];
+    }
+}
+
+export async function clockInServer(pin: string, role?: string) {
+    const employee = await prisma.employee.findUnique({
+        where: { pin }
+    });
+
+    if (!employee) throw new Error("Invalid PIN");
+
+    const existing = await prisma.timesheet.findFirst({
+        where: {
+            employeeId: employee.id,
+            clockOut: null
+        }
+    });
+
+    if (existing) throw new Error("Already clocked in!");
+
+    const timesheet = await prisma.timesheet.create({
+        data: {
+            employeeId: employee.id,
+            role: role || employee.role,
+            clockIn: new Date(),
+            breaks: []
+        },
+        include: { employee: true }
+    });
+
+    revalidatePath('/');
+    return { success: true, employeeName: `${timesheet.employee.firstName}` };
+}
+
+export async function clockOutServer(pin: string, tips: number = 0) {
+    const employee = await prisma.employee.findUnique({
+        where: { pin }
+    });
+    if (!employee) throw new Error("Invalid PIN");
+
+    const activeShift = await prisma.timesheet.findFirst({
+        where: {
+            employeeId: employee.id,
+            clockOut: null
+        }
+    });
+
+    if (!activeShift) throw new Error("No active shift found.");
+
+    const breaks = (activeShift.breaks as any[]) || [];
+    if (breaks.some((b: any) => !b.endTime)) {
+        throw new Error("End your break first!");
+    }
+
+    await prisma.timesheet.update({
+        where: { id: activeShift.id },
+        data: {
+            clockOut: new Date(),
+            declaredTips: tips
+        }
+    });
+
+    revalidatePath('/');
+    return { success: true };
+}
+
+export async function toggleBreakServer(pin: string, action: 'start' | 'end') {
+    const employee = await prisma.employee.findUnique({
+        where: { pin }
+    });
+    if (!employee) throw new Error("Invalid PIN");
+
+    const activeShift = await prisma.timesheet.findFirst({
+        where: {
+            employeeId: employee.id,
+            clockOut: null
+        }
+    });
+
+    if (!activeShift) throw new Error("No active shift found.");
+
+    let breaks = (activeShift.breaks as any[]) || [];
+
+    if (action === 'start') {
+        if (breaks.some((b: any) => !b.endTime)) throw new Error("Already on break!");
+        breaks.push({ startTime: new Date().toISOString(), type: 'unpaid' });
+    } else {
+        const openIdx = breaks.findIndex((b: any) => !b.endTime);
+        if (openIdx === -1) throw new Error("Not on break!");
+        breaks[openIdx].endTime = new Date().toISOString();
+    }
+
+    await prisma.timesheet.update({
+        where: { id: activeShift.id },
+        data: { breaks }
+    });
+
+    revalidatePath('/');
+    return { success: true };
+}
