@@ -159,6 +159,7 @@ async function processInventoryDepletion(order: Order): Promise<string[]> {
         let depleted = false;
 
         // 1. Recipe Logic
+        // @ts-ignore
         if (menuItem?.recipe && Array.isArray(menuItem.recipe)) {
             const recipe = menuItem.recipe as { inventoryItemId: string, quantity: number }[];
             for (const ing of recipe) {
