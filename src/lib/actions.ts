@@ -150,7 +150,7 @@ async function processInventoryDepletion(order: Order): Promise<string[]> {
         select: { id: true, name: true, recipe: true }
     });
 
-    const menuItemMap = new Map(menuItems.map(m => [m.id, m]));
+    const menuItemMap = new Map(menuItems.map((m: any) => [m.id, m]));
 
     await Promise.all(order.items.map(async (item) => {
         const menuItem = menuItemMap.get(item.id);
@@ -224,7 +224,7 @@ export async function processPayment(orderId: string, amount: number, method: st
 
     if (!order) throw new Error("Order not found");
 
-    const totalPaid = order.payments.reduce((sum, p) => sum + p.amount, 0);
+    const totalPaid = order.payments.reduce((sum: number, p: any) => sum + p.amount, 0);
 
     // 3. Close if fully paid (tolerance 0.01)
     if (totalPaid >= order.total - 0.01) {
